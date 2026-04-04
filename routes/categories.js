@@ -10,7 +10,10 @@ router.get('/', async function (req, res, next) {
       isDeleted: false
     }
   )
-  res.send(dataCategories);
+  res.send({
+    success: true,
+    data: dataCategories
+  });
 });
 ///api/v1/products/id
 router.get('/:id', async function (req, res, next) {

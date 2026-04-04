@@ -30,7 +30,11 @@ router.get('/', async function (req, res, next) {
     path: 'category',
     select: "name"
   })
-  res.send(result);
+  res.send({
+    success: true,
+    message: "Get products successfully",
+    data: result
+  });
 });
 ///api/v1/products/id
 router.get('/:id', async function (req, res, next) {
@@ -39,13 +43,19 @@ router.get('/:id', async function (req, res, next) {
     let result = await productModel.findById(id);
     if (!result || result.isDeleted) {
       res.status(404).send({
+        success: false,
         message: "ID NOT FOUND"
       });
     } else {
-      res.send(result)
+      res.send({
+        success: true,
+        message: "Get product successfully",
+        data: result
+      })
     }
   } catch (error) {
     res.status(404).send({
+      success: false,
       message: "ID NOT FOUND"
     });
   }
