@@ -1,14 +1,24 @@
+require('dotenv').config();
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
-let mongoose = require('mongoose')
+let mongoose = require('mongoose');
+var cors = require('cors');
+var dns = require('dns');
+var dnsPromises = dns.promises;
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
+const { env } = require('process');
 
 var app = express();
+
+app.use(cors({
+  origin: env.CORS_ORIGIN,
+  credentials: true
+}));
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -31,7 +41,12 @@ app.use('/api/v1/carts', require('./routes/cart'))
 app.use('/api/v1/upload', require('./routes/upload'))
 app.use('/api/v1/messages', require('./routes/messages'))
 
-mongoose.connect('mongodb://localhost:27017/NNPTUD-C4');
+if (process.env.FORCE_GOOGLE_DNS === 'true') {
+  dns.setServers(['8.8.8.8', '8.8.4.4']);
+  dnsPromises.setServers(['1.1.1.1', '8.8.8.8']);
+}
+
+mongoose.connect(env.MONGO_URI || 'mongodb://localhost:27017/NNPTUD-C4');
 mongoose.connection.on('connected', function () {
   console.log("connected");
 })

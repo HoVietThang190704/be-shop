@@ -60,6 +60,35 @@ router.get('/:id', async function (req, res, next) {
     });
   }
 });
+router.get('/detail/:slug', async function (req, res, next) {
+  try {
+    let slug = req.params.slug;
+    let result = await productModel.findOne({
+      slug: slug,
+      isDeleted: false
+    }).populate({
+      path: 'category',
+      select: "name"
+    });
+    if (!result) {
+      res.status(404).send({
+        success: false,
+        message: "PRODUCT NOT FOUND"
+      });
+    } else {
+      res.send({
+        success: true,
+        message: "Get product successfully",
+        data: result
+      })
+    }
+  } catch (error) {
+    res.status(404).send({
+      success: false,
+      message: "ERROR FETCHING PRODUCT"
+    });
+  }
+});
 router.post('/', async function (req, res, next) {
   let session = await mongoose.startSession()
   session.startTransaction()
