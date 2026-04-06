@@ -9,8 +9,6 @@ const voucherModel = require('../schemas/vouchers');
 const momo = require('../utils/momo');
 
 const REWARD_RATE = 0.05;
-const MIN_REDEEM_POINTS = 1000;
-const VOUCHER_EXPIRE_DAYS = 30;
 
 function calculateRewardPoints(amount) {
   return Math.max(0, Math.floor(amount * REWARD_RATE));
@@ -18,12 +16,6 @@ function calculateRewardPoints(amount) {
 
 function isVoucherExpired(voucher) {
   return new Date(voucher.expiresAt).getTime() <= Date.now();
-}
-
-function generateVoucherCode() {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const randomPart = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `RW-${timestamp}-${randomPart}`;
 }
 
 async function creditRewardPoints(order) {
@@ -44,11 +36,7 @@ async function creditRewardPoints(order) {
 }
 
 async function markVoucherRedeemed(order) {
-  if (!order.voucherId) {
-    return;
-  }
-
-  const voucher = await voucherModel.findById(order.voucherId);
+  const voucher = await voucherModel.findOne({ order: order._id });
   if (!voucher || voucher.status === 'redeemed') {
     return;
   }
@@ -60,11 +48,7 @@ async function markVoucherRedeemed(order) {
 }
 
 async function releaseVoucher(order) {
-  if (!order.voucherId) {
-    return;
-  }
-
-  const voucher = await voucherModel.findById(order.voucherId);
+  const voucher = await voucherModel.findOne({ order: order._id });
   if (!voucher || voucher.status !== 'locked') {
     return;
   }
@@ -203,8 +187,6 @@ router.post('/', CheckLogin, async (req, res) => {
       totalAmount,
       subtotalAmount,
       discountAmount,
-      voucherCode: voucher ? voucher.code : undefined,
-      voucherId: voucher ? voucher._id : undefined,
       txnRef: orderId,
     });
     await order.save();
@@ -336,121 +318,12 @@ router.get('/', CheckLogin, async (req, res) => {
   try {
     const orders = await orderModel.find({ user: req.user._id })
       .populate('items.product')
-      .populate('voucherId')
       .sort({ createdAt: -1 });
 
     res.json({ success: true, data: orders });
   } catch (error) {
     console.error('Fetch orders error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch orders' });
-  }
-});
-
-// GET /api/v1/orders/rewards/summary
-router.get('/rewards/summary', CheckLogin, async (req, res) => {
-  try {
-    await voucherModel.updateMany(
-      {
-        user: req.user._id,
-        status: { $in: ['active', 'locked'] },
-        expiresAt: { $lte: new Date() },
-      },
-      { $set: { status: 'expired' } }
-    );
-
-    const user = await userModel.findById(req.user._id).select('rewardPoints');
-    const vouchers = await voucherModel
-      .find({ user: req.user._id })
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .select('code pointsCost discountAmount status expiresAt redeemedAt createdAt');
-
-    return res.json({
-      success: true,
-      data: {
-        rewardPoints: user ? user.rewardPoints : 0,
-        conversion: '1 point = 1 VND discount',
-        minRedeemPoints: MIN_REDEEM_POINTS,
-        vouchers,
-      },
-    });
-  } catch (error) {
-    console.error('Fetch reward summary error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch reward summary' });
-  }
-});
-
-// POST /api/v1/orders/rewards/redeem
-router.post('/rewards/redeem', CheckLogin, async (req, res) => {
-  try {
-    const points = Number(req.body.points);
-    if (!Number.isInteger(points) || points < MIN_REDEEM_POINTS) {
-      return res.status(400).json({
-        success: false,
-        message: `Points must be an integer and at least ${MIN_REDEEM_POINTS}`,
-      });
-    }
-
-    const user = await userModel.findOneAndUpdate(
-      {
-        _id: req.user._id,
-        rewardPoints: { $gte: points },
-      },
-      {
-        $inc: { rewardPoints: -points },
-      },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(400).json({ success: false, message: 'Not enough reward points' });
-    }
-
-    const expiresAt = new Date(Date.now() + VOUCHER_EXPIRE_DAYS * 24 * 60 * 60 * 1000);
-    let voucher = null;
-
-    try {
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        const code = generateVoucherCode();
-        try {
-          voucher = await voucherModel.create({
-            user: req.user._id,
-            code,
-            pointsCost: points,
-            discountAmount: points,
-            expiresAt,
-          });
-          break;
-        } catch (error) {
-          if (error && error.code === 11000) {
-            continue;
-          }
-          throw error;
-        }
-      }
-
-      if (!voucher) {
-        throw new Error('Failed to generate voucher code');
-      }
-    } catch (error) {
-      await userModel.findByIdAndUpdate(req.user._id, { $inc: { rewardPoints: points } });
-      throw error;
-    }
-
-    return res.status(201).json({
-      success: true,
-      message: 'Redeem successful',
-      data: {
-        voucherCode: voucher.code,
-        discountAmount: voucher.discountAmount,
-        pointsUsed: voucher.pointsCost,
-        pointsLeft: user.rewardPoints,
-        expiresAt: voucher.expiresAt,
-      },
-    });
-  } catch (error) {
-    console.error('Redeem voucher error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to redeem points' });
   }
 });
 
