@@ -31,6 +31,22 @@ router.patch("/profile", CheckLogin, uploadImage.single('avatar'), async functio
     }
 });
 
+let roleModel = require("../schemas/roles");
+
+router.get("/admins/first", async function (req, res, next) {
+    try {
+        let adminRole = await roleModel.findOne({ name: "ADMIN" });
+        if (!adminRole) return res.status(404).send({ message: "Admin role not found" });
+
+        let firstAdmin = await userModel.findOne({ role: adminRole._id, isDeleted: false });
+        if (!firstAdmin) return res.status(404).send({ message: "No admin found" });
+
+        res.send(firstAdmin);
+    } catch (err) {
+        res.status(400).send({ message: err.message });
+    }
+});
+
 router.get("/", CheckLogin,CheckRole("ADMIN", "USER"), async function (req, res, next) {
     let users = await userModel
       .find({ isDeleted: false })

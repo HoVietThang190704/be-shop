@@ -30,6 +30,17 @@ router.post('/', CheckLogin, uploadImage.single('file'), async function (req, re
         messageContent: message
     })
     await newMess.save();
+
+    try {
+        const io = req.app.get('io');
+        if (io && user01 && user02) {
+            io.to(user02.toString()).emit('receive_message', newMess);
+            io.to(user01.toString()).emit('receive_message', newMess);
+        }
+    } catch (socketErr) {
+        console.error("[Socket] Emit error:", socketErr);
+    }
+
     res.send(newMess);
 })
 router.get('/:userid', CheckLogin, async function (req, res, next) {

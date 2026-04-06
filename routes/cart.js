@@ -9,10 +9,11 @@ router.get('/', CheckLogin, async function (req, res, next) {
     let cart = await cartModel.findOne({
         user: user._id
     }).populate('products.product')
+
     res.send({
         success: true,
         message: "Get cart successfully",
-        data: cart.products
+        data: cart ? cart.products : []
     })
 })
 //add
@@ -21,6 +22,14 @@ router.post('/add', CheckLogin, async function (req, res, next) {
     let cart = await cartModel.findOne({
         user: user._id
     })
+    
+    if (!cart) {
+        cart = new cartModel({
+            user: user._id,
+            products: []
+        });
+    }
+
     let products = cart.products;
     let productID = req.body.product;
     let checkProduct = await inventoryModel.findOne({
@@ -57,6 +66,14 @@ router.post('/remove', CheckLogin, async function (req, res, next) {
     let cart = await cartModel.findOne({
         user: user._id
     })
+
+    if (!cart) {
+        return res.status(404).send({
+            success: false,
+            message: "Gio hang khong ton tai"
+        })
+    }
+
     let products = cart.products;
     let productID = req.body.product;
     let checkProduct = await inventoryModel.findOne({
@@ -93,6 +110,14 @@ router.post('/decrease', CheckLogin, async function (req, res, next) {
     let cart = await cartModel.findOne({
         user: user._id
     })
+
+    if (!cart) {
+        return res.status(404).send({
+            success: false,
+            message: "Gio hang khong ton tai"
+        })
+    }
+
     let products = cart.products;
     let productID = req.body.product;
     let checkProduct = await inventoryModel.findOne({
@@ -133,6 +158,14 @@ router.post('/modify', CheckLogin, async function (req, res, next) {
     let cart = await cartModel.findOne({
         user: user._id
     })
+
+    if (!cart) {
+        return res.status(404).send({
+            success: false,
+            message: "Gio hang khong ton tai"
+        })
+    }
+
     let products = cart.products;
     let productID = req.body.product;
     let quantity = req.body.quantity;
