@@ -53,6 +53,24 @@ router.get("/", CheckLogin,CheckRole("ADMIN", "USER"), async function (req, res,
     res.send(users);
   });
 
+router.get("/admins/first", async function (req, res, next) {
+  try {
+    // Get all admins (those with role ADMIN), sorted by creation date
+    let admins = await userModel.find({ isDeleted: false }).populate('role');
+    let admin = admins.find(u => u.role && u.role.name === "ADMIN");
+    
+    if (admin) {
+      res.send(admin);
+    } else {
+      console.warn("No admin found in database");
+      res.status(404).send({ message: "no admin found" });
+    }
+  } catch (error) {
+    console.error("Error fetching admin:", error);
+    res.status(500).send({ message: "error fetching admin" });
+  }
+});
+
 router.get("/:id", async function (req, res, next) {
   try {
     let result = await userModel
