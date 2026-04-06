@@ -56,6 +56,17 @@ router.post('/login', async function (req, res, next) {
             })
             return;
         }
+
+        // Check ADMIN role if this is an admin login
+        if (req.query.type === 'admin') {
+            if (!user.role || user.role.name !== 'ADMIN') {
+                return res.status(403).send({
+                    success: false,
+                    message: "Tài khoản không có quyền truy cập trang quản trị."
+                });
+            }
+        }
+
         if (bcrypt.compareSync(password, user.password)) {
             user.loginCount = 0;
             await user.save()

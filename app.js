@@ -15,8 +15,13 @@ const { env } = require('process');
 
 var app = express();
 
+// Parse CORS origins (comma-separated string to array)
+const corsOrigins = env.CORS_ORIGIN 
+  ? env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : ['http://localhost:3000', 'http://localhost:3001'];
+
 app.use(cors({
-  origin: env.CORS_ORIGIN,
+  origin: corsOrigins,
   credentials: true
 }));
 
