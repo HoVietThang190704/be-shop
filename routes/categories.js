@@ -91,6 +91,13 @@ router.put('/:id', async function (req, res, next) {
   //cach 2
   try {
     let id = req.params.id;
+    if (req.body.name) {
+      req.body.slug = slugify(req.body.name, {
+        replacement: '-',
+        remove: undefined,
+        lower: true
+      });
+    }
     let result = await categoryModel.findByIdAndUpdate(
       id, req.body, {
       new: true
