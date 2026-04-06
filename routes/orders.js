@@ -4,13 +4,121 @@ const { CheckLogin } = require('../utils/authHandler');
 const orderModel = require('../schemas/orders');
 const cartModel = require('../schemas/carts');
 const inventoryModel = require('../schemas/inventories');
+const userModel = require('../schemas/users');
+const voucherModel = require('../schemas/vouchers');
 const momo = require('../utils/momo');
+
+const REWARD_RATE = 0.05;
+
+function calculateRewardPoints(amount) {
+  return Math.max(0, Math.floor(amount * REWARD_RATE));
+}
+
+function isVoucherExpired(voucher) {
+  return new Date(voucher.expiresAt).getTime() <= Date.now();
+}
+
+async function creditRewardPoints(order) {
+  if (order.rewardPointsCredited) {
+    return order.rewardPointsEarned || 0;
+  }
+
+  const earnedPoints = calculateRewardPoints(order.totalAmount);
+
+  if (earnedPoints > 0) {
+    await userModel.findByIdAndUpdate(order.user, { $inc: { rewardPoints: earnedPoints } });
+  }
+
+  order.rewardPointsEarned = earnedPoints;
+  order.rewardPointsCredited = true;
+  await order.save();
+  return earnedPoints;
+}
+
+async function markVoucherRedeemed(order) {
+  const voucher = await voucherModel.findOne({ order: order._id });
+  if (!voucher || voucher.status === 'redeemed') {
+    return;
+  }
+
+  voucher.status = 'redeemed';
+  voucher.redeemedAt = new Date();
+  voucher.order = order._id;
+  await voucher.save();
+}
+
+async function releaseVoucher(order) {
+  const voucher = await voucherModel.findOne({ order: order._id });
+  if (!voucher || voucher.status !== 'locked') {
+    return;
+  }
+
+  if (isVoucherExpired(voucher)) {
+    voucher.status = 'expired';
+  } else {
+    voucher.status = 'active';
+    voucher.order = null;
+    voucher.lockedAt = null;
+  }
+
+  await voucher.save();
+}
+
+async function finalizePaidOrder(order, transId) {
+  if (order.paymentStatus === 'paid') {
+    await markVoucherRedeemed(order);
+    return creditRewardPoints(order);
+  }
+
+  order.paymentStatus = 'paid';
+  order.orderStatus = 'confirmed';
+  if (transId) {
+    order.transId = transId;
+  }
+  await order.save();
+
+  await cartModel.findOneAndUpdate(
+    { user: order.user },
+    { $set: { products: [] } }
+  );
+
+  for (const item of order.items) {
+    await inventoryModel.findOneAndUpdate(
+      { product: item.product },
+      { $inc: { stock: -item.quantity, reserved: -item.quantity, soldCount: item.quantity } }
+    );
+  }
+
+  await markVoucherRedeemed(order);
+  return creditRewardPoints(order);
+}
+
+async function finalizeFailedOrder(order) {
+  if (order.paymentStatus === 'failed') {
+    await releaseVoucher(order);
+    return;
+  }
+
+  order.paymentStatus = 'failed';
+  order.orderStatus = 'cancelled';
+  await order.save();
+
+  for (const item of order.items) {
+    await inventoryModel.findOneAndUpdate(
+      { product: item.product },
+      { $inc: { reserved: -item.quantity } }
+    );
+  }
+
+  await releaseVoucher(order);
+}
 
 
 // POST /api/v1/orders
 router.post('/', CheckLogin, async (req, res) => {
   const user = req.user;
-  const { shippingAddress, paymentMethod } = req.body;
+  const { shippingAddress, paymentMethod, discountCode } = req.body;
+  const selectedPaymentMethod = paymentMethod || 'COD';
 
   try {
     // lay gio hang va thong tin san pham
@@ -21,7 +129,7 @@ router.post('/', CheckLogin, async (req, res) => {
 
     // kiem tra ton kho va tinh tong tien
     const orderItems = [];
-    let totalAmount = 0;
+    let subtotalAmount = 0;
 
     for (const item of cart.products) {
       const product = item.product;
@@ -36,7 +144,37 @@ router.post('/', CheckLogin, async (req, res) => {
       }
 
       orderItems.push({ product: product._id, quantity: item.quantity, price: product.price });
-      totalAmount += product.price * item.quantity;
+      subtotalAmount += product.price * item.quantity;
+    }
+
+    let voucher = null;
+    let discountAmount = 0;
+
+    if (discountCode) {
+      const normalizedCode = String(discountCode).trim().toUpperCase();
+      voucher = await voucherModel.findOne({
+        code: normalizedCode,
+        user: user._id,
+        status: 'active',
+      });
+
+      if (!voucher) {
+        return res.status(400).json({ success: false, message: 'Invalid or unavailable voucher code' });
+      }
+
+      if (isVoucherExpired(voucher)) {
+        voucher.status = 'expired';
+        await voucher.save();
+        return res.status(400).json({ success: false, message: 'Voucher has expired' });
+      }
+
+      discountAmount = Math.min(voucher.discountAmount, subtotalAmount);
+    }
+
+    const totalAmount = Math.max(0, subtotalAmount - discountAmount);
+
+    if (selectedPaymentMethod !== 'COD' && selectedPaymentMethod !== 'MOMO') {
+      return res.status(400).json({ success: false, message: 'Unsupported payment method' });
     }
 
     // tao don hang (trang thai: pending)
@@ -45,11 +183,20 @@ router.post('/', CheckLogin, async (req, res) => {
       user: user._id,
       items: orderItems,
       shippingAddress,
-      paymentMethod,
+      paymentMethod: selectedPaymentMethod,
       totalAmount,
+      subtotalAmount,
+      discountAmount,
       txnRef: orderId,
     });
     await order.save();
+
+    if (voucher) {
+      voucher.status = 'locked';
+      voucher.lockedAt = new Date();
+      voucher.order = order._id;
+      await voucher.save();
+    }
 
     // tam giu hang trong kho
     for (const item of cart.products) {
@@ -60,7 +207,7 @@ router.post('/', CheckLogin, async (req, res) => {
     }
 
     // xu ly theo phuong thuc thanh toan
-    if (paymentMethod === 'MOMO') {
+    if (selectedPaymentMethod === 'MOMO') {
       const { payUrl } = await momo.createPaymentUrl({
         orderId,
         amount: Math.round(totalAmount),
@@ -74,12 +221,15 @@ router.post('/', CheckLogin, async (req, res) => {
       });
     }
 
-    // COD: xac nhan don ngay va xoa gio hang
-    await cartModel.findOneAndUpdate({ user: user._id }, { $set: { products: [] } });
-    order.orderStatus = 'confirmed';
-    await order.save();
+    // COD: xu ly thanh toan va hoan tat don ngay
+    const earnedPoints = await finalizePaidOrder(order);
 
-    return res.json({ success: true, message: 'Order placed successfully (COD)', orderId: order._id });
+    return res.json({
+      success: true,
+      message: 'Order placed successfully (COD)',
+      orderId: order._id,
+      earnedPoints,
+    });
 
   } catch (error) {
     console.error('Order creation error:', error);
@@ -111,39 +261,16 @@ router.get('/momo-return', CheckLogin, async (req, res) => {
 
     if (String(resultCode) === '0') {
       // thanh toan thanh cong
-      order.paymentStatus = 'paid';
-      order.orderStatus = 'confirmed';
-      order.transId = transId;
-      await order.save();
-
-      // xoa gio hang
-      await cartModel.findOneAndUpdate(
-        { user: order.user },
-        { $set: { products: [] } }
-      );
-
-      // cap nhat kho: deducted stock, giai phong reserved
-      for (const item of order.items) {
-        await inventoryModel.findOneAndUpdate(
-          { product: item.product },
-          { $inc: { stock: -item.quantity, reserved: -item.quantity, soldCount: item.quantity } }
-        );
-      }
-
-      return res.json({ success: true, message: 'Payment confirmed successfully', orderId: order._id });
+      const earnedPoints = await finalizePaidOrder(order, transId);
+      return res.json({
+        success: true,
+        message: 'Payment confirmed successfully',
+        orderId: order._id,
+        earnedPoints,
+      });
     } else {
       // thanh toan that bai hoac bi huy
-      order.paymentStatus = 'failed';
-      order.orderStatus = 'cancelled';
-      await order.save();
-
-      // giai phong hang da giu
-      for (const item of order.items) {
-        await inventoryModel.findOneAndUpdate(
-          { product: item.product },
-          { $inc: { reserved: -item.quantity } }
-        );
-      }
+      await finalizeFailedOrder(order);
 
       return res.json({ success: false, message: 'Payment was cancelled or failed', resultCode });
     }
@@ -170,33 +297,12 @@ router.post('/momo-ipn', async (req, res) => {
       return res.status(200).json({ resultCode: 1, message: 'Order not found' });
     }
 
-    if (resultCode === 0 && order.paymentStatus !== 'paid') {
+    if (String(resultCode) === '0' && order.paymentStatus !== 'paid') {
       // thanh toan thanh cong
-      order.paymentStatus = 'paid';
-      order.orderStatus = 'confirmed';
-      order.transId = transId;
-      await order.save();
-
-      await cartModel.findOneAndUpdate({ user: order.user }, { $set: { products: [] } });
-
-      for (const item of order.items) {
-        await inventoryModel.findOneAndUpdate(
-          { product: item.product },
-          { $inc: { stock: -item.quantity, reserved: -item.quantity, soldCount: item.quantity } }
-        );
-      }
-    } else if (resultCode !== 0) {
+      await finalizePaidOrder(order, transId);
+    } else if (String(resultCode) !== '0' && order.paymentStatus !== 'paid') {
       // thanh toan that bai / huy
-      order.paymentStatus = 'failed';
-      order.orderStatus = 'cancelled';
-      await order.save();
-
-      for (const item of order.items) {
-        await inventoryModel.findOneAndUpdate(
-          { product: item.product },
-          { $inc: { reserved: -item.quantity } }
-        );
-      }
+      await finalizeFailedOrder(order);
     }
 
     return res.status(200).json({ resultCode: 0, message: 'Confirmed' });

@@ -48,6 +48,7 @@ app.use('/api/v1/favorites', require('./routes/favorites'))
 app.use('/api/v1/upload', require('./routes/upload'))
 app.use('/api/v1/messages', require('./routes/messages'))
 app.use('/api/v1/orders', require('./routes/orders'))
+app.use('/api/v1/rewards', require('./routes/rewards'))
 
 if (process.env.FORCE_GOOGLE_DNS === 'true') {
   dns.setServers(['8.8.8.8', '8.8.4.4']);

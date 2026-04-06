@@ -53,6 +53,25 @@ let orderSchema = mongoose.Schema({
         required: true,
         min: 0
     },
+    subtotalAmount: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    discountAmount: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    rewardPointsEarned: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    rewardPointsCredited: {
+        type: Boolean,
+        default: false
+    },
     txnRef: {
         type: String,
         unique: true,
