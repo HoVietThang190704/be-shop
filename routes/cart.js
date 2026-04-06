@@ -21,7 +21,7 @@ router.get('/', CheckLogin, async function (req, res, next) {
     res.send({
         success: true,
         message: "Get cart successfully",
-        data: cart.products
+        data: cart ? cart.products : []
     })
 })
 //add
