@@ -3,6 +3,8 @@ const router = express.Router();
 const { CheckLogin } = require('../utils/authHandler');
 const userModel = require('../schemas/users');
 const voucherModel = require('../schemas/vouchers');
+const notificationHandler = require('../utils/notificationHandler');
+
 
 const MIN_REDEEM_POINTS = 1000;
 const VOUCHER_EXPIRE_DAYS = 30;
@@ -128,7 +130,15 @@ router.post('/redeem', CheckLogin, async (req, res) => {
       throw error;
     }
 
+    // Trigger notification
+    try {
+      await notificationHandler.sendRewardNotification(req.user._id, points);
+    } catch (notifErr) {
+      console.error('[Notification] Error sending redemption notification:', notifErr);
+    }
+
     return res.status(201).json({
+
       success: true,
       message: 'Redeem successful',
       data: {
@@ -140,6 +150,7 @@ router.post('/redeem', CheckLogin, async (req, res) => {
       },
     });
   } catch (error) {
+
     console.error('Redeem voucher error:', error);
     return res.status(500).json({ success: false, message: 'Failed to redeem points' });
   }

@@ -1,6 +1,8 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 
+let ioInstance = null;
+
 module.exports = {
     initServer: (server) => {
         const corsOrigins = process.env.CORS_ORIGIN 
@@ -13,6 +15,7 @@ module.exports = {
                 credentials: true
             }
         });
+        ioInstance = io;
 
         io.use((socket, next) => {
             let token = socket.handshake.auth?.token;
@@ -46,5 +49,7 @@ module.exports = {
         });
 
         return io;
-    }
+    },
+    getIO: () => ioInstance
 };
+

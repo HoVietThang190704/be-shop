@@ -7,12 +7,42 @@ const inventoryModel = require('../schemas/inventories');
 const userModel = require('../schemas/users');
 const voucherModel = require('../schemas/vouchers');
 const momo = require('../utils/momo');
+const notificationHandler = require('../utils/notificationHandler');
+const roleModel = require('../schemas/roles');
+
 
 const REWARD_RATE = 0.05;
 
 function calculateRewardPoints(amount) {
   return Math.max(0, Math.floor(amount * REWARD_RATE));
 }
+
+async function notifyAdminsOfNewOrder(order) {
+  try {
+    const adminRole = await roleModel.findOne({ name: 'ADMIN' });
+    if (!adminRole) return;
+
+    const admins = await userModel.find({ role: adminRole._id });
+    const adminIds = admins.map(a => a._id);
+
+    if (adminIds.length > 0) {
+      await notificationHandler.bulkCreateNotifications(
+        adminIds,
+        'Đơn hàng mới',
+        `Có đơn hàng mới #${order.txnRef} từ ${order.user.username || 'Khách hàng'}`,
+        'order',
+        { 
+          relatedId: order._id, 
+          priority: 'high',
+          actionUrl: `/admin/orders/${order._id}`
+        }
+      );
+    }
+  } catch (error) {
+    console.error('[Notification] Admin notify error:', error);
+  }
+}
+
 
 function isVoucherExpired(voucher) {
   return new Date(voucher.expiresAt).getTime() <= Date.now();
@@ -32,8 +62,17 @@ async function creditRewardPoints(order) {
   order.rewardPointsEarned = earnedPoints;
   order.rewardPointsCredited = true;
   await order.save();
+  
+  // Notification: Earned points
+  try {
+    await notificationHandler.sendRewardNotification(order.user, earnedPoints);
+  } catch (notifErr) {
+    console.error('[Notification] Error sending reward points notification:', notifErr);
+  }
+
   return earnedPoints;
 }
+
 
 async function markVoucherRedeemed(order) {
   const voucher = await voucherModel.findOne({ order: order._id });
@@ -96,8 +135,17 @@ async function finalizePaidOrder(order, transId) {
   }
 
   await Promise.all(finalTasks);
+  
+  // Notification: Order Confirmed
+  try {
+    await notificationHandler.sendOrderNotification(order.user, order._id, 'confirmed');
+  } catch (notifErr) {
+    console.error('[Notification] Error sending order confirmation:', notifErr);
+  }
+
   return creditRewardPoints(order);
 }
+
 
 async function finalizeFailedOrder(order) {
   if (order.paymentStatus === 'failed') {
@@ -117,7 +165,15 @@ async function finalizeFailedOrder(order) {
   }
 
   await releaseVoucher(order);
+  
+  // Notification: Order Cancelled
+  try {
+    await notificationHandler.sendOrderNotification(order.user, order._id, 'cancelled');
+  } catch (notifErr) {
+    console.error('[Notification] Error sending order cancellation:', notifErr);
+  }
 }
+
 
 
 // POST /api/v1/orders
@@ -243,7 +299,11 @@ router.post('/', CheckLogin, async (req, res) => {
     await Promise.all(preTasks);
     const earnedPoints = await finalizePaidOrder(order);
 
+    // Notify admins
+    notifyAdminsOfNewOrder(order);
+
     return res.json({
+
       success: true,
       message: 'Order placed successfully (COD)',
       orderId: order._id,

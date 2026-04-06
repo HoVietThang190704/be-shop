@@ -38,6 +38,16 @@ router.post('/', CheckLogin, uploadImage.single('file'), async function (req, re
     })
     await newMess.save();
 
+    // Trigger notification
+    const notificationHandler = require('../utils/notificationHandler');
+    try {
+      const sender = await userSchema.findById(user01);
+      await notificationHandler.sendMessageNotification(user02, newMess._id, sender.fullName || sender.username);
+    } catch (notifErr) {
+      console.error('[Notification] Error sending message notification:', notifErr);
+    }
+
+
     try {
         const io = req.app.get('io');
         if (io && user01 && user02) {
