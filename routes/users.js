@@ -4,6 +4,32 @@ let { validatedResult, CreateAnUserValidator, ModifyAnUserValidator } = require(
 let userModel = require("../schemas/users");
 let userController = require('../controllers/users')
 let { CheckLogin, CheckRole } = require('../utils/authHandler')
+let { uploadImage } = require('../utils/uploadHandler')
+
+router.patch("/profile", CheckLogin, uploadImage.single('avatar'), async function (req, res, next) {
+    try {
+        let updateData = {
+            fullName: req.body.fullName,
+            email: req.body.email
+        };
+
+        if (req.file) {
+            updateData.avatarUrl = "uploads/" + req.file.filename;
+        }
+
+        // Clean up undefined fields
+        Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
+        let updatedUser = await userController.UpdateAnUser(req.user._id, updateData);
+        res.send({
+            success: true,
+            message: "Profile updated successfully",
+            data: updatedUser
+        });
+    } catch (err) {
+        res.status(400).send({ message: err.message });
+    }
+});
 
 router.get("/", CheckLogin,CheckRole("ADMIN", "USER"), async function (req, res, next) {
     let users = await userModel
