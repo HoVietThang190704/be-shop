@@ -8,8 +8,12 @@ router.get('/', CheckLogin, async function (req, res, next) {
     let user = req.user;
     let cart = await cartModel.findOne({
         user: user._id
+    }).populate('products.product')
+    res.send({
+        success: true,
+        message: "Get cart successfully",
+        data: cart.products
     })
-    res.send(cart.products)
 })
 //add
 router.post('/add', CheckLogin, async function (req, res, next) {
@@ -40,7 +44,12 @@ router.post('/add', CheckLogin, async function (req, res, next) {
         products[index].quantity += 1
     }
     await cart.save();
-    res.send(cart)
+    let populatedCart = await cartModel.findOne({ user: user._id }).populate('products.product');
+    res.send({
+        success: true,
+        message: "Add to cart successfully",
+        data: populatedCart.products
+    })
 })
 //remove
 router.post('/remove', CheckLogin, async function (req, res, next) {
@@ -64,13 +73,19 @@ router.post('/remove', CheckLogin, async function (req, res, next) {
     })
     if (index < 0) {
         res.status(404).send({
+            success: false,
             message: "san pham khong ton tai trong gio hang"
         })
     } else {
         products.splice(index, 1)
     }
     await cart.save();
-    res.send(cart)
+    let populatedCart = await cartModel.findOne({ user: user._id }).populate('products.product');
+    res.send({
+        success: true,
+        message: "Remove from cart successfully",
+        data: populatedCart
+    })
 })
 //decrease
 router.post('/decrease', CheckLogin, async function (req, res, next) {
@@ -94,6 +109,7 @@ router.post('/decrease', CheckLogin, async function (req, res, next) {
     })
     if (index < 0) {
         res.status(404).send({
+            success: false,
             message: "san pham khong ton tai trong gio hang"
         })
     } else {
@@ -104,7 +120,12 @@ router.post('/decrease', CheckLogin, async function (req, res, next) {
         }
     }
     await cart.save();
-    res.send(cart)
+    let populatedCart = await cartModel.findOne({ user: user._id }).populate('products.product');
+    res.send({
+        success: true,
+        message: "Decrease quantity successfully",
+        data: populatedCart
+    })
 })
 //modify
 router.post('/modify', CheckLogin, async function (req, res, next) {
@@ -129,6 +150,7 @@ router.post('/modify', CheckLogin, async function (req, res, next) {
     })
     if (index < 0) {
         res.status(404).send({
+            success: false,
             message: "san pham khong ton tai trong gio hang"
         })
     } else {
@@ -139,6 +161,11 @@ router.post('/modify', CheckLogin, async function (req, res, next) {
         }
     }
     await cart.save();
-    res.send(cart)
+    let populatedCart = await cartModel.findOne({ user: user._id }).populate('products.product');
+    res.send({
+        success: true,
+        message: "Modify quantity successfully",
+        data: populatedCart
+    })
 })
 module.exports = router

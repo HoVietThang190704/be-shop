@@ -5,10 +5,10 @@ module.exports = {
         try {
             let token = req.headers.authorization;
             if (!token || !token.startsWith("Bearer")) {
-                if (req.cookies.TOKEN_LOGIN_NNPTUD_C4) {
-                    token = req.cookies.TOKEN_LOGIN_NNPTUD_C4;
+                if (req.cookies.accessToken) {
+                    token = req.cookies.accessToken;
                 } else {
-                    res.status(404).send({
+                    res.status(401).send({
                         message: "ban chua dang nhap"
                     })
                     return;
@@ -18,14 +18,14 @@ module.exports = {
             }
             let result = jwt.verify(token, "secret")
             if (result.exp * 1000 < Date.now()) {
-                res.status(404).send({
+                res.status(401).send({
                     message: "ban chua dang nhap"
                 })
                 return;
             }
             let user = await userController.GetAnUserById(result.id);
             if (!user) {
-                res.status(404).send({
+                res.status(401).send({
                     message: "ban chua dang nhap"
                 })
                 return;

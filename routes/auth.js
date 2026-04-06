@@ -25,11 +25,16 @@ router.post('/register', async function (req, res, next) {
         await newCArt.populate('user')
         await session.commitTransaction();
         await session.endSession()
-        res.send(newCArt)
+        res.send({
+            success: true,
+            message: "Registration successful",
+            data: newCArt
+        })
     } catch (error) {
         await session.abortTransaction();
         await session.endSession()
         res.status(404).send({
+            success: false,
             message: error.message
         })
     }
@@ -51,6 +56,17 @@ router.post('/login', async function (req, res, next) {
             })
             return;
         }
+
+        // Check ADMIN role if this is an admin login
+        if (req.query.type === 'admin') {
+            if (!user.role || user.role.name !== 'ADMIN') {
+                return res.status(403).send({
+                    success: false,
+                    message: "Tài khoản không có quyền truy cập trang quản trị."
+                });
+            }
+        }
+
         if (bcrypt.compareSync(password, user.password)) {
             user.loginCount = 0;
             await user.save()
@@ -60,12 +76,18 @@ router.post('/login', async function (req, res, next) {
             }, 'secret', {
                 expiresIn: '1d'
             })
-            res.cookie("TOKEN_LOGIN_NNPTUD_C4", token, {
+            res.cookie("accessToken", token, {
                 maxAge: 30 * 3600 * 24 * 1000,
                 httpOnly: true,
-                secure: false
+                secure: false,
+                path: "/",
+                sameSite: "lax"
             })
-            res.send(token)
+            res.send({
+                success: true,
+                message: "Login successful",
+                data: { token }
+            })
         } else {
             user.loginCount++;
             if (user.loginCount == 3) {
@@ -73,18 +95,24 @@ router.post('/login', async function (req, res, next) {
                 user.lockTime = Date.now() + 3600 * 1000;
             }
             await user.save()
-            res.status(404).send({
+            res.status(401).send({
+                success: false,
                 message: "thong tin dang nhap khong dung"
             })
         }
     } catch (error) {
         res.status(404).send({
+            success: false,
             message: error.message
         })
     }
 })
 router.get('/me', CheckLogin, function (req, res, next) {
-    res.send(req.user)
+    res.send({
+        success: true,
+        message: "Get user info successful",
+        data: req.user
+    })
 })
 router.post('changepassword', CheckLogin, ChangePasswordValidator, validatedResult, async function (req, res, next) {
     let { oldpassword, newpassword } = req.body;
@@ -98,13 +126,16 @@ router.post('changepassword', CheckLogin, ChangePasswordValidator, validatedResu
     res.send(" sai password")
 })
 router.post('/logout', CheckLogin, function (req, res, next) {
-    res.cookie("TOKEN_LOGIN_NNPTUD_C4", null, {
+    res.cookie("accessToken", null, {
         maxAge: 0,
         httpOnly: true,
-        secure: false
+        secure: false,
+        path: "/",
+        sameSite: "lax"
     })
     res.send({
-        message: "da logout"
+        success: true,
+        message: "Logout successful"
     })
 })
 router.post('/forgotpassword', async function (req, res, next) {

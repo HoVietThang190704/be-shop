@@ -19,7 +19,7 @@ module.exports = {
         return await userModel.findOne({
             isDeleted: false,
             username: username
-        })
+        }).populate('role')
     }, GetAnUserById: async function (id) {
         return await userModel.findOne({
             isDeleted: false,
