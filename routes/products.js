@@ -5,6 +5,8 @@
 var express = require('express');
 var router = express.Router();
 const slugify = require('slugify');
+const { CheckLogin } = require('../utils/authHandler');
+
 let productModel = require('../schemas/products')
 let inventoryModel = require('../schemas/inventories');
 const products = require('../schemas/products');
@@ -13,23 +15,23 @@ let mongoose = require('mongoose')
 /* GET users listing. */
 router.get('/', async function (req, res, next) {
   let queries = req.query;
-  let titleQ = queries.titl ? queries.title : "";
-  let minPrice = queries.min ? queries.min : 0;
-  let maxPrice = queries.max ? queries.max : 10000;
-  console.log(queries);
-  let result = await productModel.find(
-    {
-      isDeleted: false,
-      title: new RegExp(titleQ, 'i'),
-      price: {
-        $gte: minPrice,
-        $lte: maxPrice
-      }
-    }
-  ).populate({
+  let titleQ = queries.title ? queries.title : "";
+  
+  let matchQuery = {
+    isDeleted: false,
+    title: new RegExp(titleQ, 'i')
+  };
+
+  if (queries.min !== undefined || queries.max !== undefined) {
+    matchQuery.price = {};
+    if (queries.min !== undefined) matchQuery.price.$gte = Number(queries.min);
+    if (queries.max !== undefined) matchQuery.price.$lte = Number(queries.max);
+  }
+
+  let result = await productModel.find(matchQuery).populate({
     path: 'category',
     select: "name"
-  })
+  }).sort({ createdAt: -1 });
   res.send({
     success: true,
     message: "Get products successfully",
@@ -89,11 +91,19 @@ router.get('/detail/:slug', async function (req, res, next) {
     });
   }
 });
-router.post('/', async function (req, res, next) {
+router.post('/', CheckLogin, async function (req, res, next) {
+  if (!req.user || !req.user.role || req.user.role.name !== 'ADMIN') {
+    return res.status(403).send({
+      success: false,
+      message: "Tài khoản không có quyền truy cập trang quản trị."
+    });
+  }
+
   let session = await mongoose.startSession()
   session.startTransaction()
   try {
     let newProduct = new productModel({
+      sku: `SKU-${Date.now()}`,
       title: req.body.title,
       slug: slugify(req.body.title, {
         replacement: '-',
@@ -106,19 +116,29 @@ router.post('/', async function (req, res, next) {
       category: req.body.category
     })
     await newProduct.save({ session })
+    
     let newInventory = new inventoryModel({
       product: newProduct._id,
-      stock: 0
+      stock: req.body.stock ? Number(req.body.stock) : 0
     })
     await newInventory.save({ session });
     await newInventory.populate('product')
+    
     await session.commitTransaction();
-    await session.endSession()
-    res.send(newInventory)
+    await session.endSession();
+    
+    res.send({
+      success: true,
+      message: "Sản phẩm đã được tạo thành công",
+      data: newInventory
+    });
   } catch (error) {
     await session.abortTransaction();
-    await session.endSession()
-    res.status(404).send(error.message)
+    await session.endSession();
+    res.status(400).send({
+      success: false,
+      message: error.message || "Failed to create product"
+    });
   }
 })
 router.put('/:id', async function (req, res, next) {

@@ -210,8 +210,14 @@ router.post('/momo-ipn', async (req, res) => {
 // GET /api/v1/orders
 router.get('/', CheckLogin, async (req, res) => {
   try {
-    const orders = await orderModel.find({ user: req.user._id })
+    let query = {};
+    if (!req.user.role || req.user.role.name !== 'ADMIN') {
+      query = { user: req.user._id };
+    }
+
+    const orders = await orderModel.find(query)
       .populate('items.product')
+      .populate('user', 'username email')
       .sort({ createdAt: -1 });
 
     res.json({ success: true, data: orders });
