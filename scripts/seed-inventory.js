@@ -1,11 +1,22 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
+const dnsPromises = dns.promises;
+require('dotenv').config();
+
 const Product = require('../schemas/products');
 const Inventory = require('../schemas/inventories');
 
-const MONGO_URI = 'mongodb://localhost:27017/NNPTUD-C4';
+const MONGO_URI = process.env.MONGO_URI;
 
 async function seedInventory() {
     try {
+        // Optional: force DNS resolution through Google's resolvers to avoid local SRV issues
+        if (process.env.FORCE_GOOGLE_DNS === 'true') {
+            dns.setServers(['8.8.8.8', '8.8.4.4']);
+            dnsPromises.setServers(['1.1.1.1', '8.8.8.8']);
+            console.log('🌐 Using Google DNS servers for resolution');
+        }
+
         console.log('--- Inventory Seeding Started ---');
         
         // Connect to MongoDB

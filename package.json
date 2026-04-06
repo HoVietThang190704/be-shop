@@ -18,11 +18,14 @@
     "hbs": "~4.0.4",
     "http-errors": "~1.6.3",
     "jsonwebtoken": "^9.0.3",
+    "moment": "^2.30.1",
     "mongoose": "^9.2.4",
     "morgan": "~1.9.1",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.2",
     "nodemon": "^3.1.11",
-    "slugify": "^1.6.6"
+    "qs": "^6.15.0",
+    "slugify": "^1.6.6",
+    "vnpay": "^2.5.0"
   }
 }
