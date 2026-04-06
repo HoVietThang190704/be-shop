@@ -77,19 +77,25 @@ async function finalizePaidOrder(order, transId) {
   }
   await order.save();
 
-  await cartModel.findOneAndUpdate(
-    { user: order.user },
-    { $set: { products: [] } }
-  );
+  // Parallelize cart clearing and inventory updates
+  const finalTasks = [
+    cartModel.findOneAndUpdate(
+      { user: order.user },
+      { $set: { products: [] } }
+    ),
+    markVoucherRedeemed(order)
+  ];
 
   for (const item of order.items) {
-    await inventoryModel.findOneAndUpdate(
-      { product: item.product },
-      { $inc: { stock: -item.quantity, reserved: -item.quantity, soldCount: item.quantity } }
+    finalTasks.push(
+      inventoryModel.findOneAndUpdate(
+        { product: item.product },
+        { $inc: { stock: -item.quantity, reserved: -item.quantity, soldCount: item.quantity } }
+      )
     );
   }
 
-  await markVoucherRedeemed(order);
+  await Promise.all(finalTasks);
   return creditRewardPoints(order);
 }
 
@@ -127,13 +133,18 @@ router.post('/', CheckLogin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cart is empty' });
     }
 
-    // kiem tra ton kho va tinh tong tien
+    // 1. lay tat ca thong tin ton kho cho cac san pham trong gio hang
+    const productIds = cart.products.map(item => item.product._id);
+    const inventories = await inventoryModel.find({ product: { $in: productIds } });
+    const inventoryMap = new Map(inventories.map(inv => [inv.product.toString(), inv]));
+
+    // 2. kiem tra ton kho va tinh tong tien
     const orderItems = [];
     let subtotalAmount = 0;
 
     for (const item of cart.products) {
       const product = item.product;
-      const inventory = await inventoryModel.findOne({ product: product._id });
+      const inventory = inventoryMap.get(product._id.toString());
       const availableStock = inventory ? inventory.stock - inventory.reserved : 0;
 
       if (availableStock < item.quantity) {
@@ -191,37 +202,45 @@ router.post('/', CheckLogin, async (req, res) => {
     });
     await order.save();
 
+    // chuan bi cac tac vu song song: voucher + inventory reserve
+    const preTasks = [];
     if (voucher) {
       voucher.status = 'locked';
       voucher.lockedAt = new Date();
       voucher.order = order._id;
-      await voucher.save();
+      preTasks.push(voucher.save());
     }
 
-    // tam giu hang trong kho
     for (const item of cart.products) {
-      await inventoryModel.findOneAndUpdate(
-        { product: item.product._id },
-        { $inc: { reserved: item.quantity } }
+      preTasks.push(
+        inventoryModel.findOneAndUpdate(
+          { product: item.product._id },
+          { $inc: { reserved: item.quantity } }
+        )
       );
     }
 
     // xu ly theo phuong thuc thanh toan
     if (selectedPaymentMethod === 'MOMO') {
-      const { payUrl } = await momo.createPaymentUrl({
-        orderId,
-        amount: Math.round(totalAmount),
-        orderInfo: `Thanh toan don hang ${orderId}`,
-      });
+      // Chay song song MoMo call voi cac tac vu DB
+      const [momoRes] = await Promise.all([
+        momo.createPaymentUrl({
+          orderId,
+          amount: Math.round(totalAmount),
+          orderInfo: `Thanh toan don hang ${orderId}`,
+        }),
+        ...preTasks
+      ]);
 
       return res.status(200).json({
         success: true,
         message: 'Order created. Redirecting to MoMo payment...',
-        data: { paymentUrl: payUrl, orderId: order._id },
+        data: { paymentUrl: momoRes.payUrl, orderId: order._id },
       });
     }
 
-    // COD: xu ly thanh toan va hoan tat don ngay
+    // COD: Cho cac tac vu DB hoan tat roi finalize
+    await Promise.all(preTasks);
     const earnedPoints = await finalizePaidOrder(order);
 
     return res.json({

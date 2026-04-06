@@ -5,6 +5,13 @@ let { uploadImage } = require('../utils/uploadHandler')
 let messageSchema = require('../schemas/messages');
 let userSchema = require('../schemas/users');
 
+// Socket.io instance will be passed through app middleware
+let socketIO = null;
+
+router.use((req, res, next) => {
+  socketIO = req.app.get('socketIO');
+  next();
+});
 
 router.post('/', CheckLogin, uploadImage.single('file'), async function (req, res, next) {
     let user01 = req.user._id;
@@ -30,8 +37,30 @@ router.post('/', CheckLogin, uploadImage.single('file'), async function (req, re
         messageContent: message
     })
     await newMess.save();
+    
+    // Emit socket.io event to both users
+    if (socketIO) {
+      socketIO.emit('receive_message', newMess);
+    }
+    
     res.send(newMess);
 })
+router.get('/public/:userid', async function (req, res, next) {
+    // Public endpoint for unauthenticated users to fetch chat history with a specific user (usually admin)
+    let user02 = req.params.userid;
+    let getUser02 = await userSchema.findById(user02);
+    if (!getUser02) {
+        res.status(404).send({
+            message: "user khong ton tai"
+        })
+        return;
+    }
+    
+    // For public users, we can't identify them, so return empty
+    // OR try to get from authorization header if available
+    res.send([]);
+})
+
 router.get('/:userid', CheckLogin, async function (req, res, next) {
     let user01 = req.user._id;
     let user02 = req.params.userid;
@@ -42,6 +71,7 @@ router.get('/:userid', CheckLogin, async function (req, res, next) {
         })
         return;
     }
+    
     let messages = await messageSchema.find({
         $or: [
             {
@@ -73,7 +103,8 @@ router.get('/', CheckLogin, async function (req, res, next) {
     let messageMap = new Map();
     for (const message of messages) {
         let user02 = user01.toString() == message.from.toString() ? message.to.toString() : message.from.toString()
-        if (!messageMap.has(user02)) {
+        // Exclude self-conversations
+        if (user02.toString() !== user01.toString() && !messageMap.has(user02)) {
             messageMap.set(user02, message)
         }
     }

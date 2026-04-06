@@ -7,6 +7,7 @@
 var app = require('../app');
 var debug = require('debug')('nnptud-c4:server');
 var http = require('http');
+var io = require('socket.io');
 
 /**
  * Get port from environment and store in Express.
@@ -20,6 +21,30 @@ app.set('port', port);
  */
 
 var server = http.createServer(app);
+
+/**
+ * Initialize socket.io
+ */
+const socketIO = io(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : ['http://localhost:3000', 'http://localhost:3001'],
+    credentials: true
+  }
+});
+
+// Handle socket.io connections
+socketIO.on('connection', (socket) => {
+  console.log('New client connected:', socket.id);
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+// Pass socketIO to app
+app.set('socketIO', socketIO);
 
 /**
  * Listen on provided port, on all network interfaces.

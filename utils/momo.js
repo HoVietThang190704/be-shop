@@ -77,11 +77,29 @@ async function createPaymentUrl({ orderId, amount, orderInfo }) {
       let data = "";
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
-        const parsed = JSON.parse(data);
-        if (parsed.resultCode === 0) {
-          resolve({ payUrl: parsed.payUrl, shortLink: parsed.shortLink });
-        } else {
-          reject(new Error(`MoMo error: ${parsed.message} (resultCode: ${parsed.resultCode})`));
+        try {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            console.error("MoMo HTTP Error:", {
+              status: res.statusCode,
+              body: data
+            });
+            return reject(new Error(`MoMo API returned status code ${res.statusCode}`));
+          }
+
+          const parsed = JSON.parse(data);
+          if (parsed.resultCode === 0) {
+            resolve({ payUrl: parsed.payUrl, shortLink: parsed.shortLink });
+          } else {
+            console.error("MoMo Business Error:", parsed);
+            reject(new Error(`MoMo error: ${parsed.message} (resultCode: ${parsed.resultCode})`));
+          }
+        } catch (e) {
+          console.error("Failed to parse MoMo response:", {
+            error: e.message,
+            statusCode: res.statusCode,
+            body: data
+          });
+          reject(new Error("Invalid JSON response from MoMo API"));
         }
       });
     });
