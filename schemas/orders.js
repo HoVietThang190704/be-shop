@@ -53,6 +53,34 @@ let orderSchema = mongoose.Schema({
         required: true,
         min: 0
     },
+    subtotalAmount: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    discountAmount: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    voucherCode: {
+        type: String,
+        uppercase: true,
+        trim: true
+    },
+    voucherId: {
+        type: mongoose.Types.ObjectId,
+        ref: 'voucher'
+    },
+    rewardPointsEarned: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    rewardPointsCredited: {
+        type: Boolean,
+        default: false
+    },
     txnRef: {
         type: String,
         unique: true,
