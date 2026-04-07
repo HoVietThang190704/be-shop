@@ -20,7 +20,6 @@ module.exports = {
         io.use((socket, next) => {
             let token = socket.handshake.auth?.token;
             if (!token && socket.handshake.headers.cookie) {
-               // Extract token from cookie as fallback if not in auth
                const cookies = socket.handshake.headers.cookie.split(';');
                for (let cookie of cookies) {
                    const [name, val] = cookie.trim().split('=');

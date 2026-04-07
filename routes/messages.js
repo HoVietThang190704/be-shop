@@ -58,8 +58,6 @@ router.post('/', CheckLogin, uploadImage.single('file'), async function (req, re
         console.error("[Socket] Emit error:", socketErr);
     }
 
-    
-    // Emit socket.io event to both users
     if (socketIO) {
       socketIO.emit('receive_message', newMess);
     }
@@ -67,7 +65,6 @@ router.post('/', CheckLogin, uploadImage.single('file'), async function (req, re
     res.send(newMess);
 })
 router.get('/public/:userid', async function (req, res, next) {
-    // Public endpoint for unauthenticated users to fetch chat history with a specific user (usually admin)
     let user02 = req.params.userid;
     let getUser02 = await userSchema.findById(user02);
     if (!getUser02) {
@@ -76,9 +73,7 @@ router.get('/public/:userid', async function (req, res, next) {
         })
         return;
     }
-    
-    // For public users, we can't identify them, so return empty
-    // OR try to get from authorization header if available
+
     res.send([]);
 })
 
@@ -124,7 +119,6 @@ router.get('/', CheckLogin, async function (req, res, next) {
     let messageMap = new Map();
     for (const message of messages) {
         let user02 = user01.toString() == message.from.toString() ? message.to.toString() : message.from.toString()
-        // Exclude self-conversations
         if (user02.toString() !== user01.toString() && !messageMap.has(user02)) {
             messageMap.set(user02, message)
         }

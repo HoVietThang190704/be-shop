@@ -55,7 +55,6 @@ router.get("/", CheckLogin,CheckRole("ADMIN", "USER"), async function (req, res,
 
 router.get("/admins/first", async function (req, res, next) {
   try {
-    // Get all admins (those with role ADMIN), sorted by creation date
     let admins = await userModel.find({ isDeleted: false }).populate('role');
     let admin = admins.find(u => u.role && u.role.name === "ADMIN");
     

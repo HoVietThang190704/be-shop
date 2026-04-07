@@ -54,7 +54,6 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Index for finding unread notifications by user
 notificationSchema.index({ user: 1, isRead: 1, createdAt: -1 });
 
 module.exports = mongoose.model('notification', notificationSchema);
