@@ -47,6 +47,11 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Login count cannot be negative"]
     },
+    rewardPoints: {
+      type: Number,
+      default: 0,
+      min: [0, "Reward points cannot be negative"]
+    },
     isDeleted: {
       type: Boolean,
       default: false

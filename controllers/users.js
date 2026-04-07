@@ -35,9 +35,12 @@ module.exports = {
             isDeleted: false,
             forgotPasswordToken: token
         })
-        if (user.forgotPasswordTokenExp > Date.now()) {
+        if (user && user.forgotPasswordTokenExp > Date.now()) {
             return user;
         }
         return false;
+    },
+    UpdateAnUser: async function (id, data) {
+        return await userModel.findByIdAndUpdate(id, data, { new: true }).populate('role');
     }
 }

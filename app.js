@@ -34,6 +34,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/', indexRouter);
 //localhost:3000/users
@@ -47,6 +48,9 @@ app.use('/api/v1/favorites', require('./routes/favorites'))
 app.use('/api/v1/upload', require('./routes/upload'))
 app.use('/api/v1/messages', require('./routes/messages'))
 app.use('/api/v1/orders', require('./routes/orders'))
+app.use('/api/v1/rewards', require('./routes/rewards'))
+app.use('/api/v1/comments', require('./routes/comments'))
+app.use('/api/v1/notifications', require('./routes/notifications'))
 
 if (process.env.FORCE_GOOGLE_DNS === 'true') {
   dns.setServers(['8.8.8.8', '8.8.4.4']);
